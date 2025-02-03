@@ -1,7 +1,8 @@
 import triton
 import numpy as np
 import torch
-from pcg_triton import launch_pcg_kernel
+#from pcg_triton import launch_pcg_kernel
+from pcg_triton2 import solve_pcg as launch_pcg_kernel
 
 # Define the test function
 def test_pcg_kernel():
@@ -34,10 +35,10 @@ def test_pcg_kernel():
     tmp = torch.tensor(tmp, dtype=torch.float32, device='cuda')
 
     # Launch the PCG kernel
-    launch_pcg_kernel(A_values, A_row_offsets, A_column_indices, b, x, r, p, z, tmp, num_rows)
+    launch_pcg_kernel(A_values, A_row_offsets, A_column_indices, b, x)
 
     # Synchronize the GPU
-    triton.synchronize()
+    torch.cuda.synchronize()
 
     # Check the results
     r_host = r.to('cpu').numpy()
