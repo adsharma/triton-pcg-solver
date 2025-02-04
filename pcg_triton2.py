@@ -3,6 +3,14 @@ import triton.language as tl
 import torch
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 128}),
+        triton.Config({"BLOCK_SIZE": 256}),
+        triton.Config({"BLOCK_SIZE": 512}),
+    ],
+    key=["num_rows"],
+)
 @triton.jit
 def pcg_kernel(
     A_values,
@@ -184,8 +192,8 @@ def solve_pcg(
     )  # Temporary reduction array
 
     # Configure kernel launch parameters
-    BLOCK_SIZE = 256
-    grid = ((-(-len(b) // BLOCK_SIZE)),)
+    num_rows = len(b)
+    grid = lambda meta: (triton.cdiv(num_rows, meta["BLOCK_SIZE"]),)
 
     # Launch Triton kernel
     pcg_kernel[grid](
@@ -198,10 +206,9 @@ def solve_pcg(
         p,
         z,
         tmp,
-        len(b),
+        num_rows,
         max_iterations,
         tolerance,
-        BLOCK_SIZE,
     )
 
     return x
