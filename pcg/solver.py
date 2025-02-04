@@ -1,6 +1,6 @@
+import torch
 import triton
 import triton.language as tl
-import torch
 
 
 @triton.autotune(
@@ -36,7 +36,6 @@ def pcg_kernel(
     block_end = tl.minimum(block_start + BLOCK_SIZE, num_rows)
 
     # Initialize residual
-    is_first_block = pid == 0
     for row in range(block_start, block_end):
         r_val = tl.load(b + row)
         start = tl.load(A_row_offsets + row)

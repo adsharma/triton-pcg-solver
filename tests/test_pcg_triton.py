@@ -1,6 +1,6 @@
+import numpy as np
 import pytest
 import scipy.sparse as sp
-import numpy as np
 import torch
 
 from pcg.solver import solve_pcg
@@ -33,7 +33,7 @@ def test_pcg_kernel(sparse_csr_matrix):
     # Create random vectors
     # b_orig = b = np.random.rand(num_rows).astype(np.float32)
     b_orig = b = np.array([1, 0, 0, 1])
-    x_orig = x = np.random.rand(num_cols).astype(np.float32)
+    x = np.random.rand(num_cols).astype(np.float32)
     r = np.random.rand(num_rows).astype(np.float32)
     p = np.random.rand(num_rows).astype(np.float32)
     z = np.random.rand(num_rows).astype(np.float32)
