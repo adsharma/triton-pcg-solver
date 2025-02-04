@@ -208,8 +208,8 @@ def solve_pcg(
         max_iterations,
         tolerance,
     )
-
-    return x
+    residual_norm = tmp
+    return x, residual_norm
 
 
 # Utility function for sparse matrix-vector multiplication
