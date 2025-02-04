@@ -25,10 +25,6 @@ def test_pcg_kernel(sparse_csr_matrix):
     # Define the matrix dimensions
     num_rows, num_cols = sparse_csr_matrix.shape
 
-    # Create a random sparse matrix
-    A_values = sparse_csr_matrix.data
-    A_row_offsets = sparse_csr_matrix.indptr
-    A_column_indices = sparse_csr_matrix.indices
 
     # Create random vectors
     # b_orig = b = np.random.rand(num_rows).astype(np.float32)
@@ -40,9 +36,6 @@ def test_pcg_kernel(sparse_csr_matrix):
     tmp = np.random.rand(num_rows).astype(np.float32)
 
     # Move the data to the GPU
-    A_values = torch.tensor(A_values, dtype=torch.float32, device="cuda")
-    A_row_offsets = torch.tensor(A_row_offsets, dtype=torch.int32, device="cuda")
-    A_column_indices = torch.tensor(A_column_indices, dtype=torch.int32, device="cuda")
     b = torch.tensor(b, dtype=torch.float32, device="cuda")
     x = torch.tensor(x, dtype=torch.float32, device="cuda")
     r = torch.tensor(r, dtype=torch.float32, device="cuda")
@@ -51,7 +44,7 @@ def test_pcg_kernel(sparse_csr_matrix):
     tmp = torch.tensor(tmp, dtype=torch.float32, device="cuda")
 
     # Launch the PCG kernel
-    solve_pcg(A_values, A_row_offsets, A_column_indices, b, x)
+    solve_pcg(sparse_csr_matrix, b, x)
 
     # Synchronize the GPU
     torch.cuda.synchronize()

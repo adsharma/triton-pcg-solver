@@ -1,6 +1,9 @@
 import torch
 import triton
 import triton.language as tl
+import numpy as np
+from scipy.sparse import csr_matrix
+from typing import Optional
 
 
 @triton.autotune(
@@ -147,21 +150,17 @@ def pcg_kernel(
 
 # Example wrapper function to launch the kernel
 def solve_pcg(
-    A_values,
-    A_row_offsets,
-    A_column_indices,
-    b,
-    x_init=None,
-    max_iterations=1000,
+    A: csr_matrix,
+    b: np.array,
+    x_init: Optional[np.array] = None,
+    max_iterations: int =1000,
     tolerance=1e-6,
 ):
     """
     Solve Ax = b using Preconditioned Conjugate Gradient method
 
     Parameters:
-    - A_values: Non-zero values of sparse matrix
-    - A_row_offsets: Row offsets in CSR format
-    - A_column_indices: Column indices in CSR format
+    - A: Sparse Matrix scipy.sparse.csr_matrix format
     - b: Right-hand side vector
     - x_init: Initial guess (optional)
     - max_iterations: Maximum CG iterations
@@ -171,16 +170,16 @@ def solve_pcg(
     - Solved vector x
     """
     # Convert inputs to torch tensors if not already
-    A_values = torch.as_tensor(A_values, dtype=torch.float32)
-    A_row_offsets = torch.as_tensor(A_row_offsets, dtype=torch.int32)
-    A_column_indices = torch.as_tensor(A_column_indices, dtype=torch.int32)
-    b = torch.as_tensor(b, dtype=torch.float32)
+    A_values = torch.as_tensor(A.data, dtype=torch.float32, device='cuda')
+    A_row_offsets = torch.as_tensor(A.indptr, dtype=torch.int32, device='cuda')
+    A_column_indices = torch.as_tensor(A.indices, dtype=torch.int32, device='cuda')
+    b = torch.as_tensor(b, dtype=torch.float32, device='cuda')
 
     # Initialize solution vector
     if x_init is None:
         x = torch.zeros_like(b)
     else:
-        x = torch.as_tensor(x_init, dtype=torch.float32)
+        x = torch.as_tensor(x_init, dtype=torch.float32, device='cuda')
 
     # Allocate working vectors
     r = b - sparse_matrix_vector_multiply(A_values, A_row_offsets, A_column_indices, x)
