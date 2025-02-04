@@ -7,123 +7,135 @@ import torch
 def pcg_kernel(
     A_values,
     A_row_offsets,
-    A_column_indices,  # Sparse matrix representation
-    b,  # Right-hand side vector
-    x,  # Solution vector (input/output)
-    r,  # Residual vector
-    p,  # Search direction vector
-    z,  # Preconditioned residual vector
-    tmp,  # Temporary working array
-    num_rows,  # Number of rows in the matrix
-    max_iterations,  # Maximum number of iterations
-    tolerance,  # Convergence tolerance
-    BLOCK_SIZE: tl.constexpr,  # Compile-time block size
+    A_column_indices,
+    b,
+    x,
+    r,
+    p,
+    z,
+    tmp,
+    num_rows,
+    max_iterations,
+    tolerance,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """
-    Preconditioned Conjugate Gradient kernel for solving linear systems Ax = b
-
-    Parameters:
-    - Sparse matrix A in Compressed Sparse Row (CSR) format
-    - b: right-hand side vector
-    - x: initial guess / solution vector (modified in-place)
-    - r: residual vector
-    - p: search direction vector
-    - z: preconditioned residual vector
-    - tmp: temporary working array for reductions
-    - num_rows: number of rows in the matrix
+    Optimized Preconditioned Conjugate Gradient kernel for solving linear systems Ax = b
+    Uses diagonal preconditioning and minimizes control flow divergence
     """
-    # Global thread and block information
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     block_end = tl.minimum(block_start + BLOCK_SIZE, num_rows)
 
-    # Iteration-specific variables
-    alpha = 0.0  # Step size
-    beta = 0.0  # Conjugate gradient beta parameter
-    rho = 0.0  # Current residual norm squared
-    rho_prev = 0.0  # Previous residual norm squared
+    # Initialize residual
+    is_first_block = pid == 0
+    for row in range(block_start, block_end):
+        r_val = tl.load(b + row)
+        start = tl.load(A_row_offsets + row)
+        end = tl.load(A_row_offsets + row + 1)
+        for j in range(start, end):
+            col = tl.load(A_column_indices + j)
+            a_val = tl.load(A_values + j)
+            x_val = tl.load(x + col)
+            r_val -= a_val * x_val
+        tl.store(r + row, r_val)
 
+    tl.debug_barrier()
+
+    # Iteration variables
+    rho = 0.0
+    rho_prev = 0.0
     converged = False
 
     # Main PCG iteration loop
     for iteration in range(max_iterations):
-        residual_norm = 0.0
-        if not converged:
-            # Compute preconditioned residual
-            for row in range(block_start, block_end):
-                # Precondition
-                # Assumes diagonal is stored first in each row
-                off = tl.load(A_row_offsets + row)
-                diag = tl.load(A_values + off)
-                r_row = tl.load(r + row)
-                val = r_row / diag if diag != 0 else r_row
-                tl.store(z + row, val)
+        active = not converged
 
-            # Compute inner product (rho)
-            rho_prev = rho
-            rho = 0.0
-            for row in range(block_start, block_end):
-                r_row = tl.load(r + row)
-                z_row = tl.load(z + row)
-                rho += r_row * z_row
+        # Reset reduction variables using masked store
+        tl.store(tmp + pid, 0.0 * active)
+        tl.store(tmp + num_rows + pid, 0.0 * active)
+        tl.debug_barrier()
 
-            # Synchronize and reduce rho across blocks
-            tl.atomic_add(tmp, rho)
+        # Compute preconditioned residual and rho
+        local_rho = 0.0
+        for row in range(block_start, block_end):
+            # Load residual and compute preconditioned value
+            start = tl.load(A_row_offsets + row)
+            diag = tl.load(A_values + start)
+            r_val = tl.load(r + row)
+            z_val = r_val / (diag + (diag == 0.0))  # Avoid division by zero
+            tl.store(z + row, z_val * active)
 
-            # Update search direction on first iteration or restart
-            if iteration == 0 or rho == 0:
-                for row in range(block_start, block_end):
-                    z_row = tl.load(z + row)
-                    tl.store(p + row, z_row)
-            else:
-                # Compute beta for conjugate gradient restart
-                beta = rho / rho_prev
-                for row in range(block_start, block_end):
-                    z_row = tl.load(z + row)
-                    p_row = tl.load(p + row)
-                    tl.store(p + row, z_row + beta * p_row)
+            # Accumulate rho locally
+            local_rho += r_val * z_val * active
 
-            # Compute A * p
-            for row in range(block_start, block_end):
-                tl.store(tmp + row, 0.0)
-                start = tl.load(A_row_offsets + row)
-                end = tl.load(A_row_offsets + row + 1)
-                for j in range(start, end):
-                    a_val = tl.load(A_values + j)
-                    p_val = tl.load(p + j)
-                    val = a_val * p_val
-                    tl.atomic_add(tmp + row, val)
+        tl.atomic_add(tmp, local_rho)
+        tl.debug_barrier()
 
-            # Compute step size (alpha)
-            denominator = 0.0
-            for row in range(block_start, block_end):
-                p_row = tl.load(p + row)
-                t_row = tl.load(tmp + row)
-                denominator += p_row * t_row
+        rho = tl.load(tmp)
 
-            # Atomic reduction for denominator
-            tl.atomic_add(tmp, denominator)
+        # Update search direction using masked operations
+        beta = rho / (rho_prev + (rho_prev == 0.0))
+        beta = tl.where(iteration == 0, 0.0, beta)
 
-            if denominator != 0:
-                alpha = rho / denominator
+        for row in range(block_start, block_end):
+            z_val = tl.load(z + row)
+            p_val = tl.load(p + row)
+            new_p = z_val + beta * p_val
+            p_val = tl.where(iteration == 0, z_val, new_p)
+            tl.store(p + row, p_val * active)
 
-            # Update solution and residual
-            for row in range(block_start, block_end):
-                p_row = tl.load(p + row)
-                t_row = tl.load(tmp + row)
-                tl.atomic_add(x + row, alpha * p_row)
-                tl.atomic_add(r + row, -alpha * t_row)
+        tl.debug_barrier()
 
-            # Check convergence
-            for row in range(block_start, block_end):
-                r_row = tl.load(r + row)
-                residual_norm += r_row * r_row
+        # Compute A*p and denominator
+        local_denom = 0.0
+        for row in range(block_start, block_end):
+            ap_val = 0.0
+            start = tl.load(A_row_offsets + row)
+            end = tl.load(A_row_offsets + row + 1)
 
-            # Atomic reduction for residual norm
-            tl.atomic_add(tmp, -residual_norm)
+            for j in range(start, end):
+                col = tl.load(A_column_indices + j)
+                a_val = tl.load(A_values + j)
+                p_val = tl.load(p + col)
+                ap_val += a_val * p_val
 
-        # Break if converged
-        converged = tl.sqrt(residual_norm) < tolerance
+            tl.store(tmp + row, ap_val * active)
+
+            # Compute denominator contribution
+            p_val = tl.load(p + row)
+            local_denom += p_val * ap_val * active
+
+        tl.atomic_add(tmp + num_rows, local_denom)
+        tl.debug_barrier()
+
+        # Compute alpha with safe division
+        denom = tl.load(tmp + num_rows)
+        alpha = rho / (denom + (denom == 0.0))
+        alpha = alpha * active
+
+        # Update solution and residual
+        local_norm = 0.0
+        for row in range(block_start, block_end):
+            p_val = tl.load(p + row)
+            ap_val = tl.load(tmp + row)
+
+            # Update x
+            x_val = tl.load(x + row)
+            tl.store(x + row, x_val + alpha * p_val * active)
+
+            # Update r and compute norm
+            r_val = tl.load(r + row)
+            r_new = r_val - alpha * ap_val
+            tl.store(r + row, r_new * active)
+            local_norm += r_new * r_new * active
+
+        tl.atomic_add(tmp + num_rows + 1, local_norm)
+        tl.debug_barrier()
+
+        residual_norm = tl.sqrt(tl.load(tmp + num_rows + 1))
+        converged = residual_norm < tolerance
+        rho_prev = rho
 
 
 # Example wrapper function to launch the kernel
