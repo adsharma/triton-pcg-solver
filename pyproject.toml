@@ -1,0 +1,13 @@
+[project]
+name = "pcg-solver"
+version = "0.0.1"
+description = "A GPU accelerated PCG solver"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "triton",
+]
+
+[tool.isort]
+profile = "black"
