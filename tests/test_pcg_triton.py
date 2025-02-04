@@ -3,8 +3,7 @@ import scipy.sparse as sp
 import numpy as np
 import torch
 
-# from pcg_triton import launch_pcg_kernel
-from pcg_triton2 import solve_pcg as launch_pcg_kernel
+from pcg.solver import solve_pcg
 
 
 @pytest.fixture
@@ -52,7 +51,7 @@ def test_pcg_kernel(sparse_csr_matrix):
     tmp = torch.tensor(tmp, dtype=torch.float32, device="cuda")
 
     # Launch the PCG kernel
-    launch_pcg_kernel(A_values, A_row_offsets, A_column_indices, b, x)
+    solve_pcg(A_values, A_row_offsets, A_column_indices, b, x)
 
     # Synchronize the GPU
     torch.cuda.synchronize()
