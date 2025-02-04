@@ -20,6 +20,7 @@ def sparse_csr_matrix():
         )
     )
 
+
 # Define the test function
 def test_pcg_kernel(sparse_csr_matrix):
     # Define the matrix dimensions
@@ -31,7 +32,7 @@ def test_pcg_kernel(sparse_csr_matrix):
     A_column_indices = sparse_csr_matrix.indices
 
     # Create random vectors
-    #b_orig = b = np.random.rand(num_rows).astype(np.float32)
+    # b_orig = b = np.random.rand(num_rows).astype(np.float32)
     b_orig = b = np.array([1, 0, 0, 1])
     x_orig = x = np.random.rand(num_cols).astype(np.float32)
     r = np.random.rand(num_rows).astype(np.float32)
@@ -56,10 +57,9 @@ def test_pcg_kernel(sparse_csr_matrix):
     # Synchronize the GPU
     torch.cuda.synchronize()
 
-    x_cpu = x.to('cpu')
+    x_cpu = x.to("cpu")
     x_expected = np.array([0.5, 0, 0, 0.5])
     assert np.allclose(x_expected, x_cpu)
     A_dense = torch.tensor(sparse_csr_matrix.todense(), dtype=torch.float32)
     b_actual = A_dense @ x_cpu
     assert np.allclose(b_actual.numpy(), b_orig)
-

@@ -1,19 +1,29 @@
 import triton
 import triton.language as tl
 
+
 # Define the PCG kernel
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_SIZE': 128}),
-        triton.Config({'BLOCK_SIZE': 256}),
-        triton.Config({'BLOCK_SIZE': 512})
+        triton.Config({"BLOCK_SIZE": 128}),
+        triton.Config({"BLOCK_SIZE": 256}),
+        triton.Config({"BLOCK_SIZE": 512}),
     ],
-    key=['num_rows']
+    key=["num_rows"],
 )
 @triton.jit
 def pcg_kernel(
-    A_values, A_row_offsets, A_column_indices, b, x, r, p, z, tmp, num_rows,
-    BLOCK_SIZE: tl.constexpr
+    A_values,
+    A_row_offsets,
+    A_column_indices,
+    b,
+    x,
+    r,
+    p,
+    z,
+    tmp,
+    num_rows,
+    BLOCK_SIZE: tl.constexpr,
 ):
     # Get the global thread ID
     pid = tl.program_id(axis=0)
@@ -41,9 +51,12 @@ def pcg_kernel(
             # Update the direction vector
             p[row] = z[row] + (r[row] * r[row]) / (p[row] * p[row]) * p[row]
 
+
 # Define the host function to launch the PCG kernel
 def launch_pcg_kernel(
     A_values, A_row_offsets, A_column_indices, b, x, r, p, z, tmp, num_rows
 ):
-    grid = lambda meta: (triton.cdiv(num_rows, meta['BLOCK_SIZE']),)
-    pcg_kernel[grid](A_values, A_row_offsets, A_column_indices, b, x, r, p, z, tmp, num_rows)
+    grid = lambda meta: (triton.cdiv(num_rows, meta["BLOCK_SIZE"]),)
+    pcg_kernel[grid](
+        A_values, A_row_offsets, A_column_indices, b, x, r, p, z, tmp, num_rows
+    )
