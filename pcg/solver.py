@@ -170,7 +170,7 @@ def solve_pcg(
 
     # Allocate working vectors
     num_rows = len(b)
-    r = b - sparse_matrix_vector_multiply(A_values, A_row_offsets, A_column_indices, x)
+    r = torch.zeros_like(b)
     p = r.clone()
     z = torch.zeros_like(r)
     tmp = torch.zeros(1, dtype=torch.float32, device="cuda")
@@ -210,27 +210,3 @@ def solve_pcg(
             break
 
     return x, sigma
-
-
-# Utility function for sparse matrix-vector multiplication
-def sparse_matrix_vector_multiply(A_values, A_row_offsets, A_column_indices, x):
-    """
-    Perform sparse matrix-vector multiplication
-
-    Parameters:
-    - A_values: Non-zero values of sparse matrix
-    - A_row_offsets: Row offsets in CSR format
-    - A_column_indices: Column indices in CSR format
-    - x: Input vector
-
-    Returns:
-    - Result of A * x
-    """
-    result = torch.zeros_like(x, device="cuda")
-    for row in range(len(x)):
-        row_start = A_row_offsets[row]
-        row_end = A_row_offsets[row + 1]
-        result[row] = torch.dot(
-            A_values[row_start:row_end], x[A_column_indices[row_start:row_end]]
-        )
-    return result
