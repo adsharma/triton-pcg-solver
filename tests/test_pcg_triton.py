@@ -25,7 +25,6 @@ def test_pcg_kernel(sparse_csr_matrix):
     # Define the matrix dimensions
     num_rows, num_cols = sparse_csr_matrix.shape
 
-
     # Create random vectors
     # b_orig = b = np.random.rand(num_rows).astype(np.float32)
     b_orig = b = np.array([1, 0, 0, 1])
@@ -44,7 +43,7 @@ def test_pcg_kernel(sparse_csr_matrix):
     tmp = torch.tensor(tmp, dtype=torch.float32, device="cuda")
 
     # Launch the PCG kernel
-    solve_pcg(sparse_csr_matrix, b, x)
+    x, sigma = solve_pcg(sparse_csr_matrix, b, x)
 
     # Synchronize the GPU
     torch.cuda.synchronize()
